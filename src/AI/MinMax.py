@@ -44,23 +44,23 @@ class Node:
         self.depth = depth
         self.evaluation = evaluation
 
-##
-# expandNode
-#
-# Description: Expands a node to include all valid moves from the GameState in the given node
-#
-# Parameters:
-#   node - a node
-#
-# Return: A list of all the new nodes that were created.
-##
-def expandNode(node):
-    moves = listAllLegalMoves(node.gameState)
-    nodes = []
-    for move in moves:
-        newNode = Node(node, move, getNextStateAdversarial(node.gameState, move), node.depth + 1, None)
-        nodes.append(newNode)
-    return nodes
+# ##
+# # expandNode
+# #
+# # Description: Expands a node to include all valid moves from the GameState in the given node
+# #
+# # Parameters:
+# #   node - a node
+# #
+# # Return: A list of all the new nodes that were created.
+# ##
+# def expandNode(node):
+#     moves = listAllLegalMoves(node.gameState)
+#     nodes = []
+#     for move in moves:
+#         newNode = Node(node, move, getNextStateAdversarial(node.gameState, move), node.depth + 1, None)
+#         nodes.append(newNode)
+#     return nodes
 
 ##
 # rootEval
@@ -509,10 +509,8 @@ class AIPlayer(Player):
     ##
 
     def getMove(self, currentState):
-
         # run miniMax
         value, move = miniMax(currentState, 3, 0, 0, self.playerId) # idc about alpha and beta, haven't implemented yet
-
         return move
 
 
