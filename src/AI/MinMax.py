@@ -129,7 +129,6 @@ def miniMax(gameState, depth, alpha, beta, me):
 
 
 
-
 ##
 # utility
 #
@@ -160,15 +159,14 @@ def utility(gameState):
                     len(getAntList(gameState, enemy, (QUEEN,))) == 0 or \
                     myInv.foodCount == 11 or \
                     enemyInv.getAnthill().captureHealth == 0:
-                return 0.0  # cost 2 win?
+                return float(100)  # cost 2 win?
             elif getWinner(gameState) == enemy or \
                 len(myAnts) == 0 or \
                     enemyInv.foodCount == 11 or \
                     myInv.getAnthill().captureHealth == 0:
-                return float(100.0) # float('inf') # cost 2 lose? / best thing ever
+                return float(0) # float('inf') # cost 2 lose? / best thing ever
 
         # estimate moves for queen, food, capture hill,... maybe soldiers?
-
 
         # food stuff - 60% of total utility
         foodScore = foodUtility(gameState, myInv, enemyInv, me)
@@ -181,8 +179,8 @@ def utility(gameState):
         # attack stuff - 10% of total utility
         attackScore = attackUtility(gameState, myInv, enemyInv, me)
 
-        utility += defenseScore * 0.2
-        utility += attackScore * 0.2
+        utility += defenseScore * 0.4
+        # utility += attackScore * 0.2
 
         # if defenseScore > attackScore:
         #     utility += defenseScore * 0.4
@@ -215,7 +213,7 @@ def foodUtility(gameState, myInv, enemyInv, me):
         foodScore += (myInv.foodCount / 11) * 0.5 # This is on a scale of 0 - 1 - good, now multiply by multiplier
         foodScore -= (enemyInv.foodCount / 11) * 0.5
         # print(f"Food Score: {foodScore}")
-        utility += foodScore * 0.97
+        utility += foodScore * 0.99
 
 
         # Some help from ChatGPT
@@ -283,7 +281,7 @@ def foodUtility(gameState, myInv, enemyInv, me):
         # print(f"Worker Score: {workerScore}")
         # Ensure workerScore in [0,1]
         workerScore = max(0.0, min(1.0, workerScore))
-        utility += (workerScore * 0.03)
+        utility += (workerScore * 0.01)
         utility = min(utility, 1.0)
         return utility
 
