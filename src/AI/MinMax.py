@@ -73,12 +73,13 @@ class Node:
 # Return: The utility of the state
 #
 def rootEval(gameState, me):
-     if gameState.whoseTurn == me:
+    if gameState.whoseTurn == me:
         return utility(gameState)
-     else:
-        s = gameState.fastclone()
-        s.whoseTurn = me
-        return utility(s)
+    else:
+        # s = gameState.fastclone()
+        # move = Move(END, None)
+        # s = getNextStateAdversarial(s, move)
+        return -utility(gameState)
 
 
 
@@ -113,7 +114,7 @@ def miniMax(gameState, depth, alpha, beta, me):
             if value > bestValue:
                 bestValue = value
                 bestMove = move
-            return bestValue, bestMove
+        return bestValue, bestMove
     # If it's the enemy's turn, we want to minimize our score
     else:
         bestValue = float('inf')
@@ -161,7 +162,7 @@ def utility(gameState):
                     enemyInv.getAnthill().captureHealth == 0:
                 return 0.0  # cost 2 win?
             elif getWinner(gameState) == enemy or \
-                  len(myAnts) == 0 or \
+                len(myAnts) == 0 or \
                     enemyInv.foodCount == 11 or \
                     myInv.getAnthill().captureHealth == 0:
                 return float(100.0) # float('inf') # cost 2 lose? / best thing ever
