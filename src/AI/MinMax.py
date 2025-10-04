@@ -113,7 +113,14 @@ def miniMax(gameState, depth, alpha, beta, me):
             if value > bestValue:
                 bestValue = value
                 bestMove = move
-            return bestValue, bestMove
+
+            # update alpha
+            alpha = max(alpha, bestValue)
+            # prune
+            if beta <= alpha:
+                break
+
+        return bestValue, bestMove
     # If it's the enemy's turn, we want to minimize our score
     else:
         bestValue = float('inf')
@@ -121,9 +128,17 @@ def miniMax(gameState, depth, alpha, beta, me):
         for move in moves:
             newState = getNextStateAdversarial(gameState, move)
             value, _ = miniMax(newState, depth - 1, alpha, beta, me)
+
             if value < bestValue:
                 bestValue = value
                 bestMove = move
+
+            # update beta
+            beta = min(beta, bestValue)
+            # prune
+            if beta <= alpha:
+                break
+
         return bestValue, bestMove
 
 
@@ -172,24 +187,12 @@ def utility(gameState):
         # food stuff - 60% of total utility
         foodScore = foodUtility(gameState, myInv, enemyInv, me)
         # print(f"Food Score: {foodScore}")
-        if foodScore:
-            utility += foodScore * 0.6
-
         # defense stuff - 30% of total utility
         defenseScore = defenseUtility(gameState, me)
         # attack stuff - 10% of total utility
         attackScore = attackUtility(gameState, myInv, enemyInv, me)
 
-        utility += defenseScore * 0.2
-        utility += attackScore * 0.2
-
-        # if defenseScore > attackScore:
-        #     utility += defenseScore * 0.4
-        # else:
-        #     utility += attackScore * 0.4
-
-        # print(f"Utility: {utility}")
-
+        utility = foodScore * 0.6 + defenseScore * 0.4
 
         return utility
 
@@ -510,7 +513,7 @@ class AIPlayer(Player):
 
     def getMove(self, currentState):
         # run miniMax
-        value, move = miniMax(currentState, 3, 0, 0, self.playerId) # idc about alpha and beta, haven't implemented yet
+        value, move = miniMax(currentState, 3, float('-inf'), float('inf'), self.playerId)
         return move
 
 
