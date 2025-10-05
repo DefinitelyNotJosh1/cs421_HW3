@@ -114,6 +114,13 @@ def miniMax(gameState, depth, alpha, beta, me):
             if value > bestValue:
                 bestValue = value
                 bestMove = move
+
+            # update alpha
+            alpha = max(alpha, bestValue)
+            # prune
+            if beta <= alpha:
+                break
+
         return bestValue, bestMove
     # If it's the enemy's turn, we want to minimize our score
     else:
@@ -125,6 +132,13 @@ def miniMax(gameState, depth, alpha, beta, me):
             if value < bestValue:
                 bestValue = value
                 bestMove = move
+
+            # update beta
+            beta = min(beta, bestValue)
+            # prune
+            if beta <= alpha:
+                break
+
         return bestValue, bestMove
 
 
@@ -509,7 +523,7 @@ class AIPlayer(Player):
 
     def getMove(self, currentState):
         # run miniMax
-        value, move = miniMax(currentState, 3, 0, 0, self.playerId) # idc about alpha and beta, haven't implemented yet
+        value, move = miniMax(currentState, 3, float('-inf'), float('inf'), self.playerId)
         return move
 
 
