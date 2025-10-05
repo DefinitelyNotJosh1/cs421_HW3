@@ -76,9 +76,10 @@ def rootEval(gameState, me):
      if gameState.whoseTurn == me:
         return utility(gameState)
      else:
-        s = gameState.fastclone()
-        s.whoseTurn = me
-        return utility(s)
+        # s = gameState.fastclone()
+        # s.whoseTurn = me
+        # return utility(s)
+        return -utility(gameState)
 
 
 
