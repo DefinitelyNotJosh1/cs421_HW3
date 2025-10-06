@@ -480,27 +480,25 @@ class AIPlayer(Player):
                 moves.append(move)
             return moves
         elif currentState.phase == SETUP_PHASE_2:   #stuff on foe's side
-            enemyTunnel = getConstrList(currentState, None, (TUNNEL,))[0]
-            enemyHill = getConstrList(currentState, None, (ANTHILL,))[0]
-
-            # find all spots on enemy side of board that are empty
-            furthestCoords = []
-            for i in range(0, 10):
-                for j in range(6, 10):
-                    if currentState.board[i][j].constr == None:
-                        furthestCoords.append((i,j))
-
-            # sort spots by distance from enemy tunnel
-            furthestCoords.sort(key=lambda x:
-                        abs(enemyTunnel.coords[0] - x[0]) + abs(enemyTunnel.coords[1] - x[1]) +
-                        abs(enemyHill.coords[0] - x[0]) + abs(enemyHill.coords[1] - x[1]))
+            numToPlace = 2
             moves = []
-            # add the two furthest spots to the moves list
-            moves.append(furthestCoords[-1])
-            moves.append(furthestCoords[-2])
+            for i in range(0, numToPlace):
+                move = None
+                while move == None:
+                    #Choose any x location
+                    x = random.randint(0, 9)
+                    #Choose any y location on enemy side of the board
+                    y = random.randint(6, 9)
+                    #Set the move if this space is empty
+                    if currentState.board[x][y].constr == None and (x, y) not in moves:
+                        move = (x, y)
+                        #Just need to make the space non-empty. So I threw whatever I felt like in there.
+                        currentState.board[x][y].constr == True
+                moves.append(move)
             return moves
         else:
             return [(0, 0)]
+    
 
     ##
     #getMove
@@ -514,7 +512,12 @@ class AIPlayer(Player):
 
     def getMove(self, currentState):
         # run miniMax
+        myUtility = round(utility(currentState), 2)
+        # round to 2 decimal places
+        print(f"Current Utility: {myUtility}")  
         value, move = miniMax(currentState, 3, float('-inf'), float('inf'), self.playerId)
+
+        print(f"Move with value {value} selected: {move}")
         return move
 
 
