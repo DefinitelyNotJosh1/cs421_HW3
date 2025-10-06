@@ -233,12 +233,12 @@ def foodUtility(gameState, myInv, enemyInv, me):
         # print(f"Num Workers: {numWorkers}")
 
         # If we have no workers, score is 0
-        if numWorkers == 0:
-            return 0.0
+        # if numWorkers == 0:
+        #     return 0.0
 
         # If we have too many workers, aka not good
-        if numWorkers > 2:
-            utility -= 0.1
+        # if numWorkers > 2:
+        #     utility -= 0.1
 
         # Avoid division by zero; if no workers, score remains 0
         if numWorkers > 0:
@@ -311,7 +311,7 @@ def defenseUtility(gameState, me):
     # Enemy ants on my side are threats
     threats = [a for a in getAntList(gameState, enemy, (QUEEN, WORKER, DRONE, SOLDIER, R_SOLDIER)) if on_my_side(a.coords)]
     # My attack-capable ants
-    defenders = getAntList(gameState, me, (DRONE, SOLDIER, R_SOLDIER))
+    defenders = getAntList(gameState, me, (R_SOLDIER,))
 
     # If no threats on my side, defense is perfect
     if not threats:
@@ -328,6 +328,7 @@ def defenseUtility(gameState, me):
         minDist = min(approxDist(d.coords, t.coords) for d in defenders)
         score = 1.0 - min(minDist / maxDist, 10.0)
         total += score
+
 
     proximityScore = total / len(threats)
     return max(0.0, min(1.0, proximityScore))
