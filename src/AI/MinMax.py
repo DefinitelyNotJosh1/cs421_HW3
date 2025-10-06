@@ -175,12 +175,12 @@ def utility(gameState):
                     len(getAntList(gameState, enemy, (QUEEN,))) == 0 or \
                     myInv.foodCount == 11 or \
                     enemyInv.getAnthill().captureHealth == 0:
-                return 0.0  # cost 2 win?
+                return float(100.0)  # cost 2 win?
             elif getWinner(gameState) == enemy or \
-                  len(myAnts) == 0 or \
+                len(myAnts) == 0 or \
                     enemyInv.foodCount == 11 or \
                     myInv.getAnthill().captureHealth == 0:
-                return float(100.0) # float('inf') # cost 2 lose? / best thing ever
+                return float(0) # float('inf') # cost 2 lose? / best thing ever
 
         # estimate moves for queen, food, capture hill,... maybe soldiers?
 
