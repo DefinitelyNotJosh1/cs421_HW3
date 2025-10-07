@@ -76,9 +76,6 @@ def rootEval(gameState, me):
      if gameState.whoseTurn == me:
         return utility(gameState)
      else:
-        # s = gameState.fastclone()
-        # s.whoseTurn = me
-        # return utility(s)
         return -utility(gameState)
 
 
@@ -104,6 +101,7 @@ def miniMax(gameState, depth, alpha, beta, me):
     if not moves:
         return rootEval(gameState, me), None
     
+    
     # If it's my turn, we want to maximize our score
     if gameState.whoseTurn == me:
         bestValue = float('-inf')
@@ -111,9 +109,14 @@ def miniMax(gameState, depth, alpha, beta, me):
         for move in moves:
             newState = getNextStateAdversarial(gameState, move)
             value, _ = miniMax(newState, depth - 1, alpha, beta, me)
+
             if value > bestValue:
                 bestValue = value
                 bestMove = move
+
+                #DEBUG: delete
+                if (move.moveType == END) and (len(moves) > 1):
+                    print(f"DEBUG: Found END move: {move}")
 
             # update alpha
             alpha = max(alpha, bestValue)
@@ -180,7 +183,7 @@ def utility(gameState):
                 len(myAnts) == 0 or \
                     enemyInv.foodCount == 11 or \
                     myInv.getAnthill().captureHealth == 0:
-                return float(0) # float('inf') # cost 2 lose? / best thing ever
+                return float(0.0) # float('inf') # cost 2 lose? / best thing ever
 
         # estimate moves for queen, food, capture hill,... maybe soldiers?
 
@@ -193,7 +196,7 @@ def utility(gameState):
         # attack stuff - 10% of total utility
         attackScore = attackUtility(gameState, myInv, enemyInv, me)
 
-        utility = foodScore * 0.6 + defenseScore * 0.4
+        utility = foodScore * 0.6 + (attackScore * 0.2 + defenseScore * 0.2)
 
         return utility
 
@@ -358,43 +361,28 @@ def attackUtility(gameState, myInv, enemyInv, me):
     # My attack-capable ants
     attackers = getAntList(gameState, me, (DRONE, SOLDIER, R_SOLDIER))
 
-    enemyAnthill = enemyInv.getAnthill()
-    if enemyAnthill:
-        enemyAnthill = enemyAnthill.coords
-    else:
-        return 1.0
 
-    enemyQueen = getAntList(gameState, enemy, (QUEEN,))[0]
-    if enemyQueen:
-        enemyQueen = enemyQueen.coords
-    else:
-        return 1.0
-
-    # If there are no enemy's, attack is perfect
-    if not attackable:
-        for t in attackers:
-            # minDist = approxDist(enemyAnthill, t.coords) # min(approxDist(d.coords, t.coords) for d in attackers)
-            minDist = approxDist(enemyQueen, t.coords)
+    # look for the nearest enemy for each attacker
+    if not attackers:
+        return 0.0
+    
+    for a in attackers:
+        if len(attackable) == 0:
+            return 1.0
+        else:
+            minDist = min(approxDist(a.coords, t.coords) for t in attackable)
             score = 1.0 - min(minDist / maxDist, 10.0)
             total += score
 
-        proximityScore = total / len(attackers) if total != 0 or len(attackers) != 0 else 0.0
-        return max(0.0, min(1.0, proximityScore))
-    # If there are threats but no attackers, attackable is bad
-    if not attackers:
-        return 0.0
+        enemyWorkers = getAntList(gameState, enemy, (WORKER,))
+        if len(enemyWorkers) == 0:
+            total += 0.5  # bonus for eliminating enemy workers
 
-    # Encourage attackers to be close to threats
-    # 0 distance -> 1.0 score; distance >= maxDist -> 0.1 score
-    for t in attackable:
-        minDist = approxDist(enemyAnthill, t.coords) # min(approxDist(d.coords, t.coords) for d in attackers)
-        # minDist = approxDist(enemyQueen, t.coords)
-        score = 1.0 - min(minDist / maxDist, 10.0)
-        total += score
 
-    proximityScore = total / len(attackable) if total != 0 or len(attackable) != 0 else 0.0
-    return max(0.0, min(1.0, proximityScore))
+   
 
+    attackScore = total / len(attackers)
+    return max(0.0, min(1.0, attackScore))
 
  ##
 # bestMove
@@ -419,6 +407,7 @@ def bestMove(nodes):
             bestNodes = [node]
         elif (node.evaluation - node.depth == bestNodes[0].evaluation - bestNodes[0].depth):
             bestNodes.append(node)
+
 
     return random.choice(bestNodes)
 
@@ -517,6 +506,24 @@ class AIPlayer(Player):
         # round to 2 decimal places
         print(f"Current Utility: {myUtility}")  
         value, move = miniMax(currentState, 3, float('-inf'), float('inf'), self.playerId)
+
+        # DEBUG:
+        # print the top 3 best moves at currentState
+        moves = listAllLegalMoves(currentState)
+        bagOfStates = []
+        bagOfUtils = []
+        for m in moves:
+            newState = getNextStateAdversarial(currentState, m)
+            u = utility(newState)
+            bagOfStates.append(newState)
+            bagOfUtils.append(u)
+        # sort by utility
+        sortedMoves = sorted(zip(moves, bagOfUtils), key=lambda x: x[1], reverse=True)
+        print("Top 3 moves by utility:")
+        for m, u in sortedMoves[:3]:
+            print(f"Move: {m}, Utility: {round(u, 2)}")
+
+
 
         print(f"Move with value {value} selected: {move}")
         return move
