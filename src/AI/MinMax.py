@@ -74,11 +74,9 @@ class Node:
 #
 def rootEval(gameState, me):
      if gameState.whoseTurn == me:
+        # print(f"ended on my turn")
         return utility(gameState)
      else:
-        # s = gameState.fastclone()
-        # s.whoseTurn = me
-        # return utility(s)
         return -utility(gameState)
 
 
@@ -187,13 +185,13 @@ def utility(gameState):
 
         # food stuff - 60% of total utility
         foodScore = foodUtility(gameState, myInv, enemyInv, me)
-        # print(f"Food Score: {foodScore}")
+        # print(f"Food Score: {foodScore}")q
         # defense stuff - 30% of total utility
         defenseScore = defenseUtility(gameState, me)
         # attack stuff - 10% of total utility
         attackScore = attackUtility(gameState, myInv, enemyInv, me)
 
-        utility = foodScore * 0.6 + defenseScore * 0.4
+        utility = foodScore + defenseScore + attackScore
 
         return utility
 
@@ -229,6 +227,7 @@ def foodUtility(gameState, myInv, enemyInv, me):
         anthill = myInv.getAnthill()
         foodList = getConstrList(gameState, None, (FOOD,))
         numWorkers = len(myWorkers)
+        myAnts = getAntList(gameState, me, (QUEEN, WORKER, DRONE, SOLDIER, R_SOLDIER))
         # print(f"Workers: {myWorkers}")
         # print(f"Num Workers: {numWorkers}")
 
@@ -237,8 +236,8 @@ def foodUtility(gameState, myInv, enemyInv, me):
         #     return 0.0
 
         # If we have too many workers, aka not good
-        # if numWorkers > 2:
-        #     utility -= 0.1
+        if numWorkers > 2:
+            utility -= 0.1
 
         # Avoid division by zero; if no workers, score remains 0
         if numWorkers > 0:
@@ -285,9 +284,15 @@ def foodUtility(gameState, myInv, enemyInv, me):
 
         # print(f"Worker Score: {workerScore}")
         # Ensure workerScore in [0,1]
+        # print(f"Worker Score: {workerScore}")
         workerScore = max(0.0, min(1.0, workerScore))
         utility += (workerScore * 0.03)
-        utility = min(utility, 1.0)
+        # utility = min(utility, 1.0)
+
+        # give a bonus for every ant that has moved
+        # for ant in myAnts:
+        #     if ant.hasMoved:Fb
+        #         utility += 0.03
         return utility
 
 
@@ -311,7 +316,7 @@ def defenseUtility(gameState, me):
     # Enemy ants on my side are threats
     threats = [a for a in getAntList(gameState, enemy, (QUEEN, WORKER, DRONE, SOLDIER, R_SOLDIER)) if on_my_side(a.coords)]
     # My attack-capable ants
-    defenders = getAntList(gameState, me, (R_SOLDIER,))
+    defenders = getAntList(gameState, me, (SOLDIER,))
 
     # If no threats on my side, defense is perfect
     if not threats:
@@ -319,19 +324,29 @@ def defenseUtility(gameState, me):
     # If there are threats but no defenders, defense is bad
     if not defenders:
         return 0.0
+    
+    # print(f"Threats: {threats}")
+    # print(f"Defenders: {defenders}")
 
     # Encourage defenders to be close to threats
-    # 0 distance -> 1.0 score; distance >= maxDist -> 0.1 score
-    maxDist = 10.0
+    # 0 distance -> 1.0 score; distance >= maxDist -> 0.0 score
+    maxDist = 13.0
     total = 0.0
     for t in threats:
         minDist = min(approxDist(d.coords, t.coords) for d in defenders)
-        score = 1.0 - min(minDist / maxDist, 10.0)
+        # Use a sharper curve: closer defenders get much higher score
+        if minDist >= maxDist:
+            score = 0.0
+        else:
+            score = (maxDist - minDist) / maxDist
+            # square to reward being closer
+            score = score ** 2
         total += score
 
 
     proximityScore = total / len(threats)
-    return max(0.0, min(1.0, proximityScore))
+    # print(f"Proximity Score: {proximityScore}")
+    return proximityScore
 
 
 ## attackUtility
@@ -347,56 +362,51 @@ def defenseUtility(gameState, me):
 ##
 def attackUtility(gameState, myInv, enemyInv, me):
     enemy = 1 - me
-    maxDist = 10.0
+    maxDist = 18.0
     total = 0.0
-    def on_enemy_side(coords):
-        y = coords[1]
-        return y > 4
-
-    # Enemy ants on the enemy side
-    attackable = [a for a in getAntList(gameState, enemy, (QUEEN, WORKER, DRONE, SOLDIER, R_SOLDIER)) if on_enemy_side(a.coords)]
-    # My attack-capable ants
-    attackers = getAntList(gameState, me, (DRONE, SOLDIER, R_SOLDIER))
-
-    enemyAnthill = enemyInv.getAnthill()
-    if enemyAnthill:
-        enemyAnthill = enemyAnthill.coords
-    else:
-        return 1.0
-
-    enemyQueen = getAntList(gameState, enemy, (QUEEN,))[0]
-    if enemyQueen:
-        enemyQueen = enemyQueen.coords
-    else:
-        return 1.0
-
-    # If there are no enemy's, attack is perfect
-    if not attackable:
-        for t in attackers:
-            # minDist = approxDist(enemyAnthill, t.coords) # min(approxDist(d.coords, t.coords) for d in attackers)
-            minDist = approxDist(enemyQueen, t.coords)
-            score = 1.0 - min(minDist / maxDist, 10.0)
-            total += score
-
-        proximityScore = total / len(attackers) if total != 0 or len(attackers) != 0 else 0.0
-        return max(0.0, min(1.0, proximityScore))
-    # If there are threats but no attackers, attackable is bad
-    if not attackers:
+ 
+    # Only consider soldiers for attack utility
+    myAnts = getAntList(gameState, me, (SOLDIER,))
+    
+    # Get enemy workers as primary targets
+    enemyWorkers = getAntList(gameState, enemy, (WORKER,))
+    
+    # If no ants, return 0
+    if not myAnts:
         return 0.0
+    
+    # If no enemy workers, good
+    if not enemyWorkers:
+        # print(f"No enemy workers")
+        return 1.0
+    
+    # Calculate proximity scores for ants
+    for ant in myAnts:
+        if enemyWorkers:
+            minDist = min(approxDist(ant.coords, worker.coords) for worker in enemyWorkers)
+            score = max(0.0, min(1.0, 1.0 - (minDist / maxDist)))
+            total += score
+    
+    # Normalize by number of ants
+    proximityScore = total / len(myAnts)
+    # print(f"Drone Score: {proximityScore}")
 
-    # Encourage attackers to be close to threats
-    # 0 distance -> 1.0 score; distance >= maxDist -> 0.1 score
-    for t in attackable:
-        minDist = approxDist(enemyAnthill, t.coords) # min(approxDist(d.coords, t.coords) for d in attackers)
-        # minDist = approxDist(enemyQueen, t.coords)
-        score = 1.0 - min(minDist / maxDist, 10.0)
-        total += score
+    queenHealth = enemyWorkers[0].health
+    queenHealthScore = max(0.0, min(1.0, 1.0 - (queenHealth / 10.0)))
 
-    proximityScore = total / len(attackable) if total != 0 or len(attackable) != 0 else 0.0
-    return max(0.0, min(1.0, proximityScore))
+    # Sum health of enemy attacker ants
+    enemyAnts = getAntList(gameState, enemy, (WORKER, DRONE, SOLDIER, R_SOLDIER))
+    enemyAntHealth = sum(a.health for a in enemyAnts)
+
+    enemyAntHealthScore = enemyAntHealth / 10.0
 
 
- ##
+    return proximityScore# + queenHealthScore + enemyAntHealthScore
+
+
+
+
+##
 # bestMove
 #
 # Description: Searches a given list of game nodes to find the highest utility move
@@ -513,9 +523,6 @@ class AIPlayer(Player):
 
     def getMove(self, currentState):
         # run miniMax
-        myUtility = round(utility(currentState), 2)
-        # round to 2 decimal places
-        print(f"Current Utility: {myUtility}")  
         value, move = miniMax(currentState, 3, float('-inf'), float('inf'), self.playerId)
 
         print(f"Move with value {value} selected: {move}")
