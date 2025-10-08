@@ -44,23 +44,6 @@ class Node:
         self.depth = depth
         self.evaluation = evaluation
 
-# ##
-# # expandNode
-# #
-# # Description: Expands a node to include all valid moves from the GameState in the given node
-# #
-# # Parameters:
-# #   node - a node
-# #
-# # Return: A list of all the new nodes that were created.
-# ##
-# def expandNode(node):
-#     moves = listAllLegalMoves(node.gameState)
-#     nodes = []
-#     for move in moves:
-#         newNode = Node(node, move, getNextStateAdversarial(node.gameState, move), node.depth + 1, None)
-#         nodes.append(newNode)
-#     return nodes
 
 ##
 # rootEval
@@ -76,11 +59,7 @@ def rootEval(gameState, me):
     if gameState.whoseTurn == me:
         return utility(gameState)
     else:
-        # s = gameState.fastclone()
-        # move = Move(END, None)
-        # s = getNextStateAdversarial(s, move)
         return -utility(gameState)
-
 
 
 ##
@@ -94,40 +73,77 @@ def rootEval(gameState, me):
 #   beta - the beta value (also not used yet, but I figured I'd at it now)
 #   me - the id of me, the current player
 def miniMax(gameState, depth, alpha, beta, me):
+    # Base case: check for terminal state or depth limit
     if gameState.phase == PLAY_PHASE:
         winner = getWinner(gameState)
-        if winner is not None or depth == 0: # This is my base case
+        if winner is not None or depth == 0:
             return rootEval(gameState, me), None
 
+    # Get all legal moves
     moves = listAllLegalMoves(gameState)
 
     if not moves:
         return rootEval(gameState, me), None
     
+    # Always include END move as an option if not already in moves
+    hasEndMove = any(move.moveType == END for move in moves)
+    if not hasEndMove:
+        moves.append(Move(END, None, None))
+    
     # If it's my turn, we want to maximize our score
     if gameState.whoseTurn == me:
         bestValue = float('-inf')
         bestMove = None
+        
         for move in moves:
             newState = getNextStateAdversarial(gameState, move)
             value, _ = miniMax(newState, depth - 1, alpha, beta, me)
+            
             if value > bestValue:
                 bestValue = value
                 bestMove = move
+            
+            # Alpha-beta pruning for maximizing player
+            alpha = max(alpha, bestValue)
+            if beta <= alpha:
+                break  # Beta cutoff - prune remaining branches
+                
         return bestValue, bestMove
+    
     # If it's the enemy's turn, we want to minimize our score
     else:
         bestValue = float('inf')
         bestMove = None
+        
         for move in moves:
             newState = getNextStateAdversarial(gameState, move)
             value, _ = miniMax(newState, depth - 1, alpha, beta, me)
+            
             if value < bestValue:
                 bestValue = value
                 bestMove = move
+            
+            # Alpha-beta pruning for minimizing player
+            beta = min(beta, bestValue)
+            if beta <= alpha:
+                break  # Alpha cutoff - prune remaining branches
+                
         return bestValue, bestMove
 
 
+##
+# Updated getMove method for AIPlayer class
+##
+def getMove(self, currentState):
+    # Run miniMax with alpha-beta pruning
+    # Initialize alpha to -infinity and beta to +infinity
+    value, move = miniMax(currentState, 3, float('-inf'), float('inf'), self.playerId)
+    
+    # Ensure we have a valid move
+    if move is None:
+        move = Move(END, None, None)
+    
+    return move
 
 ##
 # utility
@@ -166,29 +182,14 @@ def utility(gameState):
                     myInv.getAnthill().captureHealth == 0:
                 return float(0) # float('inf') # cost 2 lose? / best thing ever
 
-        # estimate moves for queen, food, capture hill,... maybe soldiers?
-
-        # food stuff - 60% of total utility
+        # FOOD is the primary objective - 80% of total utility
         foodScore = foodUtility(gameState, myInv, enemyInv, me)
-        # print(f"Food Score: {foodScore}")
         if foodScore:
-            utility += foodScore * 0.6
+            utility += foodScore * 0.8
 
-        # defense stuff - 30% of total utility
+        # defense stuff - 20% of total utility
         defenseScore = defenseUtility(gameState, me)
-        # attack stuff - 10% of total utility
-        attackScore = attackUtility(gameState, myInv, enemyInv, me)
-
-        utility += defenseScore * 0.4
-        # utility += attackScore * 0.2
-
-        # if defenseScore > attackScore:
-        #     utility += defenseScore * 0.4
-        # else:
-        #     utility += attackScore * 0.4
-
-        # print(f"Utility: {utility}")
-
+        utility += defenseScore * 0.2
 
         return utility
 
@@ -207,83 +208,101 @@ def utility(gameState):
 ##
 def foodUtility(gameState, myInv, enemyInv, me):
     utility = 0.0
-    # Food Weights - 90% of total utility
+    
+    # Get my workers
+    myWorkers = getAntList(gameState, me, (WORKER,))
+    tunnels = myInv.getTunnels()
+    anthill = myInv.getAnthill()
+    foodList = getConstrList(gameState, None, (FOOD,))
+    numWorkers = len(myWorkers)
+    
+    # Food count is critical - 50% of food utility
     if myInv.foodCount is not None and enemyInv.foodCount is not None:
         foodScore = 0.5
-        foodScore += (myInv.foodCount / 11) * 0.5 # This is on a scale of 0 - 1 - good, now multiply by multiplier
+        foodScore += (myInv.foodCount / 11) * 0.5
         foodScore -= (enemyInv.foodCount / 11) * 0.5
-        # print(f"Food Score: {foodScore}")
-        utility += foodScore * 0.99
+        utility += foodScore * 0.5
 
+    # If we have no workers, this is very bad
+    if numWorkers == 0:
+        return utility * 0.3  # Heavily penalize no workers
 
-        # Some help from ChatGPT
-        workerScore = 0.0
-        # Get my workers
-        myWorkers = getAntList(gameState, me, (WORKER,))
-        tunnels = myInv.getTunnels()
-        anthill = myInv.getAnthill()
-        foodList = getConstrList(gameState, None, (FOOD,))
-        numWorkers = len(myWorkers)
-        # print(f"Workers: {myWorkers}")
-        # print(f"Num Workers: {numWorkers}")
+    # Penalty for too many workers
+    if numWorkers > 2:
+        utility -= 0.15
 
-        # If we have no workers, score is 0
-        if numWorkers == 0:
-            return 0.0
+    # Worker behavior scoring - 50% of food utility
+    workerScore = 0.0
+    
+    # Precompute drop sites
+    dropSites = []
+    if anthill:
+        dropSites.append(anthill.coords)
+    if tunnels:
+        dropSites.extend([t.coords for t in tunnels])
 
-        # If we have too many workers, aka not good
-        if numWorkers > 2:
-            utility -= 0.1
-
-        # Avoid division by zero; if no workers, score remains 0
-        if numWorkers > 0:
-            # Precompute drop sites
-            dropSites = []
-            if anthill:
-                dropSites.append(anthill.coords)
-            if tunnels:
-                dropSites.extend([t.coords for t in tunnels])
-
-            # Normalization constants keep per-worker contribution in [0,1]
-            maxFoodDist = 8.0
-            maxDropDist = 8.0
-
-            for i, w in enumerate(myWorkers):
-                contrib = 0.0
-
-                if w.carrying:
-                    # If at drop site: full contribution
-                    if dropSites and any(w.coords == d for d in dropSites):
-                        contrib = 1.0
-                    else:
-                        # Positive baseline for carrying so picking up is attractive
-                        if dropSites:
-                            closestDrop = min(approxDist(w.coords, d) for d in dropSites)
-                            progressToDrop = max(0.0, min(1.0, 1.0 - (closestDrop / maxDropDist)))
-                        else:
-                            progressToDrop = 0.0
-                        # Baseline 0.5 plus progress up to 1.0 max
-                        contrib = 0.5 + 0.5 * progressToDrop
+    # Filter food to only include food on our side (y <= 3)
+    myFoodList = [f for f in foodList if f.coords[1] <= 3]
+    
+    for w in myWorkers:
+        contrib = 0.0
+        
+        if w.carrying:
+            # Worker is carrying food - STRONGLY incentivize depositing
+            if dropSites:
+                if any(w.coords == d for d in dropSites):
+                    # At drop site - maximum reward!
+                    contrib = 1.0
                 else:
-                    # Not carrying: incentivize getting closer to nearest food, but cap at 0.5
-                    if foodList:
-                        closestFood = min(approxDist(w.coords, f.coords) for f in foodList)
-                        towardFood = max(0.0, min(1.0, 1.0 - (closestFood / maxFoodDist)))
-                        contrib = 0.5 * towardFood
+                    # Moving toward drop site
+                    closestDrop = min(approxDist(w.coords, d) for d in dropSites)
+                    # Strong reward for being close (inverse distance)
+                    if closestDrop == 0:
+                        contrib = 1.0
+                    elif closestDrop <= 3:
+                        contrib = 0.8
+                    elif closestDrop <= 6:
+                        contrib = 0.6
                     else:
-                        contrib = 0.0
-
-                # Clamp and average across workers
-                contrib = max(0.0, min(1.0, contrib))
-                workerScore += contrib / numWorkers
-                # print(f"Worker {i} contrib: {contrib}")
-
-        # print(f"Worker Score: {workerScore}")
-        # Ensure workerScore in [0,1]
-        workerScore = max(0.0, min(1.0, workerScore))
-        utility += (workerScore * 0.01)
-        utility = min(utility, 1.0)
-        return utility
+                        contrib = max(0.4, 1.0 - (closestDrop / 20.0))
+            else:
+                contrib = 0.5
+        else:
+            # Worker not carrying - incentivize getting food
+            if myFoodList:
+                closestFood = min(approxDist(w.coords, f.coords) for f in myFoodList)
+                
+                # Check if worker is ON food
+                onFood = any(w.coords == f.coords for f in myFoodList)
+                if onFood:
+                    # On food but not carrying - this will pick up next turn
+                    contrib = 0.9
+                elif closestFood == 0:
+                    contrib = 0.85
+                elif closestFood <= 2:
+                    contrib = 0.7
+                elif closestFood <= 4:
+                    contrib = 0.5
+                elif closestFood <= 6:
+                    contrib = 0.3
+                else:
+                    contrib = max(0.1, 0.5 - (closestFood / 20.0))
+            else:
+                # No food available
+                contrib = 0.0
+        
+        workerScore += contrib
+    
+    # Average the worker score
+    if numWorkers > 0:
+        workerScore = workerScore / numWorkers
+    
+    # Add worker behavior to utility (50% weight)
+    utility += workerScore * 0.5
+    
+    # Clamp final utility to valid range
+    utility = max(0.0, min(1.0, utility))
+    return utility
 
 
 ## defenseUtility
@@ -318,10 +337,10 @@ def defenseUtility(gameState, me):
     # Encourage defenders to be close to threats
     # 0 distance -> 1.0 score; distance >= maxDist -> 0.1 score
     maxDist = 10.0
-    total = 0.0
+    total = 1.0
     for t in threats:
         minDist = min(approxDist(d.coords, t.coords) for d in defenders)
-        score = 1.0 - min(minDist / maxDist, 10.0)
+        score = 2.0 - min(minDist / maxDist, 10.0)
         total += score
 
     proximityScore = total / len(threats)
@@ -510,6 +529,11 @@ class AIPlayer(Player):
     def getMove(self, currentState):
         # run miniMax
         value, move = miniMax(currentState, 3, 0, 0, self.playerId) # idc about alpha and beta, haven't implemented yet
+        
+        # Ensure we have a valid move
+        if move is None:
+            move = Move(END, None, None)
+        
         return move
 
 
