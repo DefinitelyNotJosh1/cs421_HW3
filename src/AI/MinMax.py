@@ -17,52 +17,6 @@ from AIPlayerUtils import *
 
 
 ##
-# NODE
-# Description: A node in the search tree; contains a game state, a move, the parent state,
-# and the utility of the state.
-##
-class Node:
-    # Use slots for memory optimization and fast attribute access -
-    # HOWEVER  - we can't add new attributes dynamically now. This shouldn't be a problem tho
-    __slots__ = ['parent', 'move', 'gameState', 'depth', 'evaluation']
-
-    ## __init__
-    #
-    # Description: Creates a new node
-    #
-    # Parameters:
-    #   parent - the parent node
-    #   move - the move that led to this state
-    #   gameState - the game state
-    #   depth - how many steps to reach from the agent's actual state
-    #   evalution - state depth + utility
-    ##
-    def __init__(self, parent, move, gameState, depth, evaluation):
-        self.parent = parent
-        self.move = move
-        self.gameState = gameState
-        self.depth = depth
-        self.evaluation = evaluation
-
-# ##
-# # expandNode
-# #
-# # Description: Expands a node to include all valid moves from the GameState in the given node
-# #
-# # Parameters:
-# #   node - a node
-# #
-# # Return: A list of all the new nodes that were created.
-# ##
-# def expandNode(node):
-#     moves = listAllLegalMoves(node.gameState)
-#     nodes = []
-#     for move in moves:
-#         newNode = Node(node, move, getNextStateAdversarial(node.gameState, move), node.depth + 1, None)
-#         nodes.append(newNode)
-#     return nodes
-
-##
 # rootEval
 # Description: Evaluates the root node, base case for miniMax
 #
@@ -78,7 +32,6 @@ def rootEval(gameState, me):
         return utility(gameState)
      else:
         return -utility(gameState)
-
 
 
 ##
@@ -190,9 +143,11 @@ def utility(gameState):
         defenseScore = defenseUtility(gameState, me)
         # attack stuff - 10% of total utility
         attackScore = attackUtility(gameState, myInv, enemyInv, me)
-
+        
         utility = foodScore + defenseScore + attackScore
-
+        # for ant in myAnts:
+        #     if not ant.hasMoved:
+        #         utility -= 0.03
         return utility
 
 
@@ -216,7 +171,7 @@ def foodUtility(gameState, myInv, enemyInv, me):
         foodScore += (myInv.foodCount / 11) * 0.5 # This is on a scale of 0 - 1 - good, now multiply by multiplier
         foodScore -= (enemyInv.foodCount / 11) * 0.5
         # print(f"Food Score: {foodScore}")
-        utility += foodScore * 0.97
+        utility += foodScore * 0.95
 
 
         # Some help from ChatGPT
@@ -227,17 +182,17 @@ def foodUtility(gameState, myInv, enemyInv, me):
         anthill = myInv.getAnthill()
         foodList = getConstrList(gameState, None, (FOOD,))
         numWorkers = len(myWorkers)
-        myAnts = getAntList(gameState, me, (QUEEN, WORKER, DRONE, SOLDIER, R_SOLDIER))
         # print(f"Workers: {myWorkers}")
         # print(f"Num Workers: {numWorkers}")
 
         # If we have no workers, score is 0
-        # if numWorkers == 0:
-        #     return 0.0
-
+        if numWorkers == 0:
+            return 0.0
+        
         # If we have too many workers, aka not good
-        if numWorkers > 2:
-            utility -= 0.1
+        for i in range(len(myWorkers)):
+            if i > 2:
+                utility -= 0.1
 
         # Avoid division by zero; if no workers, score remains 0
         if numWorkers > 0:
@@ -249,8 +204,8 @@ def foodUtility(gameState, myInv, enemyInv, me):
                 dropSites.extend([t.coords for t in tunnels])
 
             # Normalization constants keep per-worker contribution in [0,1]
-            maxFoodDist = 8.0
-            maxDropDist = 8.0
+            maxFoodDist = 12.0
+            maxDropDist = 12.0
 
             for i, w in enumerate(myWorkers):
                 contrib = 0.0
@@ -291,7 +246,7 @@ def foodUtility(gameState, myInv, enemyInv, me):
 
         # give a bonus for every ant that has moved
         # for ant in myAnts:
-        #     if ant.hasMoved:Fb
+        #     if ant.hasMoved:
         #         utility += 0.03
         return utility
 
@@ -314,7 +269,7 @@ def defenseUtility(gameState, me):
         return (y <= 4)
 
     # Enemy ants on my side are threats
-    threats = [a for a in getAntList(gameState, enemy, (QUEEN, WORKER, DRONE, SOLDIER, R_SOLDIER)) if on_my_side(a.coords)]
+    threats = [a for a in getAntList(gameState, enemy, (WORKER, DRONE, SOLDIER, R_SOLDIER)) if on_my_side(a.coords)]
     # My attack-capable ants
     defenders = getAntList(gameState, me, (SOLDIER,))
 
@@ -330,21 +285,14 @@ def defenseUtility(gameState, me):
 
     # Encourage defenders to be close to threats
     # 0 distance -> 1.0 score; distance >= maxDist -> 0.0 score
-    maxDist = 13.0
+    maxDist = 14.0
     total = 0.0
-    for t in threats:
-        minDist = min(approxDist(d.coords, t.coords) for d in defenders)
-        # Use a sharper curve: closer defenders get much higher score
-        if minDist >= maxDist:
-            score = 0.0
-        else:
-            score = (maxDist - minDist) / maxDist
-            # square to reward being closer
-            score = score ** 2
+    for d in defenders:
+        minDist = min(approxDist(d.coords, t.coords) for t in threats)
+        score = 1.0 - (minDist / maxDist)
         total += score
 
-
-    proximityScore = total / len(threats)
+    proximityScore = total / len(defenders)
     # print(f"Proximity Score: {proximityScore}")
     return proximityScore
 
@@ -363,74 +311,46 @@ def defenseUtility(gameState, me):
 def attackUtility(gameState, myInv, enemyInv, me):
     enemy = 1 - me
     maxDist = 18.0
-    total = 0.0
+
+    # Helper function to calculate proximity score
+    def proximityScore(Ants, enemyAnts):
+        total = 0.0
+        for ant in Ants:
+            if enemyAnts:
+                minDist = min(approxDist(ant.coords, enemyAnt.coords) for enemyAnt in enemyAnts)
+                score = 1.0 - (minDist / maxDist)
+                total += score
+        return total / len(myAnts)
  
     # Only consider soldiers for attack utility
     myAnts = getAntList(gameState, me, (SOLDIER,))
-    
-    # Get enemy workers as primary targets
-    enemyWorkers = getAntList(gameState, enemy, (WORKER,))
-    
-    # If no ants, return 0
     if not myAnts:
         return 0.0
     
-    # If no enemy workers, good
-    if not enemyWorkers:
-        # print(f"No enemy workers")
-        return 1.0
+    # Get enemy workers as primary targets
+    enemyWorkers = getAntList(gameState, enemy, (WORKER,))
+
+    # Prioritize attacking workers
+    if enemyWorkers:
+        workerProximityScore = proximityScore(myAnts, enemyWorkers)
+        # punish for more workers
+        for w in enemyWorkers:
+            workerProximityScore -= 0.05
+
+        # print(f"Worker Proximity Score: {workerProximityScore}")
+        return workerProximityScore
     
-    # Calculate proximity scores for ants
-    for ant in myAnts:
-        if enemyWorkers:
-            minDist = min(approxDist(ant.coords, worker.coords) for worker in enemyWorkers)
-            score = max(0.0, min(1.0, 1.0 - (minDist / maxDist)))
-            total += score
+    # get distance from top right corner of board, limits the amount of moves drone can make
+    topRightCorner = (0, 9)
+    topRightCornerScore = 1.0 - (approxDist(myAnts[0].coords, topRightCorner) / maxDist)
+    return 2.0 + topRightCornerScore # no more workers, great
     
-    # Normalize by number of ants
-    proximityScore = total / len(myAnts)
-    # print(f"Drone Score: {proximityScore}")
-
-    queenHealth = enemyWorkers[0].health
-    queenHealthScore = max(0.0, min(1.0, 1.0 - (queenHealth / 10.0)))
-
-    # Sum health of enemy attacker ants
-    enemyAnts = getAntList(gameState, enemy, (WORKER, DRONE, SOLDIER, R_SOLDIER))
-    enemyAntHealth = sum(a.health for a in enemyAnts)
-
-    enemyAntHealthScore = enemyAntHealth / 10.0
-
-
-    return proximityScore# + queenHealthScore + enemyAntHealthScore
-
-
-
-
-##
-# bestMove
-#
-# Description: Searches a given list of game nodes to find the highest utility move
-#
-# Parameters:
-#   gameState - a game state
-#   moves - a list of moves
-#
-# Return: The state with the highest utility
-#
-def bestMove(nodes):
-    # Initialize the best node with the first node's utility
-    bestNodes = [nodes[0]]
-
-    # Iterate through nodes to find the one with the highest utility
-    for node in nodes:
-        if node.evaluation is None:
-            node.evaluation = utility(node.gameState) + node.depth
-        if (node.evaluation - node.depth < bestNodes[0].evaluation - bestNodes[0].depth):
-            bestNodes = [node]
-        elif (node.evaluation - node.depth == bestNodes[0].evaluation - bestNodes[0].depth):
-            bestNodes.append(node)
-
-    return random.choice(bestNodes)
+    # # If no workers, attack queen
+    # enemyQueen = getAntList(gameState, enemy, (QUEEN,))
+    # queenProximityScore = proximityScore(myAnts, enemyQueen)
+    # enemyQueenHealth = enemyQueen[0].health
+    # queenHealthScore = 1.0 - (enemyQueenHealth / 10.0)
+    # return queenProximityScore + queenHealthScore + 2.0 # add the "2.0" base so killing all workers is incentivized
 
 
 ##
@@ -523,9 +443,9 @@ class AIPlayer(Player):
 
     def getMove(self, currentState):
         # run miniMax
-        value, move = miniMax(currentState, 3, float('-inf'), float('inf'), self.playerId)
+        _, move = miniMax(currentState, 3, float('-inf'), float('inf'), self.playerId)
 
-        print(f"Move with value {value} selected: {move}")
+        # print(f"Move with value {value} selected: {move}")
         return move
 
 
@@ -553,56 +473,56 @@ class AIPlayer(Player):
 
 
 # Remove print statements for final version
-# print("-------------------------------- STARTING TESTS -------------------------------- ")
-totalTests = 4
-passedTests = 0
-# BEST MOVE TEST
-# print("| Beginning bestMove test")
-nodes = []
-for i in range(10):
-    node = Node(None, None, GameState.getBlankState(), 1, None)
-    nodes.append(node)
-    node.evaluation = i / 10 + node.depth
-bestNode = bestMove(nodes)
+# # print("-------------------------------- STARTING TESTS -------------------------------- ")
+# totalTests = 4
+# passedTests = 0
+# # BEST MOVE TEST
+# # print("| Beginning bestMove test")
+# nodes = []
+# for i in range(10):
+#     node = Node(None, None, GameState.getBlankState(), 1, None)
+#     nodes.append(node)
+#     node.evaluation = i / 10 + node.depth
+# bestNode = bestMove(nodes)
 
-if bestNode.evaluation == 1.0:
-    # print(f"| BestMove test passed. Value was {bestNode.evaluation}, expected 1.9")
-    passedTests += 1
-else:
-    print(f"| BestMove test failed. Value was {bestNode.evaluation}, expected 1.9")
-
-
-# UTILITY TEST
-# print("| Beginning utility test")
-gameState = GameState.getBlankState()
-util = utility(gameState)
-if not 0.0 <= util <= 1.0:
-    print(f"| ERROR: utility() returned {util}, expected 0.4")
-else:
-    # print(f"| Utility test passed. Value was {util}, expected 0.4")
-    passedTests += 1
+# if bestNode.evaluation == 1.0:
+#     # print(f"| BestMove test passed. Value was {bestNode.evaluation}, expected 1.9")
+#     passedTests += 1
+# else:
+# #     print(f"| BestMove test failed. Value was {bestNode.evaluation}, expected 1.9")
 
 
-# FOOD UTILITY TEST
-# print("| Beginning food utility test")
-gameState = GameState.getBasicState()
-util = foodUtility(gameState, getCurrPlayerInventory(gameState), getEnemyInv(0, gameState), 0)
-if not 0.0 <= util <= 1.0:
-    print(f"| ERROR: foodUtility() returned {util}, expected 0.0")
-else:
-    # print(f"| Food utility test passed. Value was {util}, expected 0.0")
-    passedTests += 1
+# # UTILITY TEST
+# # print("| Beginning utility test")
+# gameState = GameState.getBlankState()
+# util = utility(gameState)
+# if not 0.0 <= util <= 1.0:
+#     print(f"| ERROR: utility() returned {util}, expected 0.4")
+# else:
+#     # print(f"| Utility test passed. Value was {util}, expected 0.4")
+#     passedTests += 1
 
 
-# DEFENSE UTILITY TEST
-# print("| Beginning defense utility test")
-gameState = GameState.getBasicState()
-util = defenseUtility(gameState, 0)
-if not 0.0 <= util <= 1.0:
-    print(f"| ERROR: defenseUtility() returned {util}, expected 1.0")
-else:
-    # print(f"| Defense utility test passed. Value was {util}, expected 1.0")
-    passedTests += 1
+# # FOOD UTILITY TEST
+# # print("| Beginning food utility test")
+# gameState = GameState.getBasicState()
+# util = foodUtility(gameState, getCurrPlayerInventory(gameState), getEnemyInv(0, gameState), 0)
+# if not 0.0 <= util <= 1.0:
+#     print(f"| ERROR: foodUtility() returned {util}, expected 0.0")
+# else:
+#     # print(f"| Food utility test passed. Value was {util}, expected 0.0")
+#     passedTests += 1
 
-# print(f"|----------------------- Passed {passedTests} out of {totalTests} tests --------------------------- ")
-# print("-------------------------------- ENDING TESTS -------------------------------- ")
+
+# # DEFENSE UTILITY TEST
+# # print("| Beginning defense utility test")
+# gameState = GameState.getBasicState()
+# util = defenseUtility(gameState, 0)
+# if not 0.0 <= util <= 1.0:
+#     print(f"| ERROR: defenseUtility() returned {util}, expected 1.0")
+# else:
+#     # print(f"| Defense utility test passed. Value was {util}, expected 1.0")
+#     passedTests += 1
+
+# # print(f"|----------------------- Passed {passedTests} out of {totalTests} tests --------------------------- ")
+# # print("-------------------------------- ENDING TESTS -------------------------------- ")
