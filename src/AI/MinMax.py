@@ -59,27 +59,28 @@ def rootEval(gameState, me):
     if gameState.whoseTurn == me:
         return utility(gameState)
     else:
-        return -utility(gameState)
+        return 1.0 - utility(gameState)  # Changed to use consistent 0-1 scale
 
 
 ##
-# miniMax
-# Description: Runs the minimax algorithm on a given node
+# miniMax with Alpha-Beta Pruning
+# Description: Runs the minimax algorithm with alpha-beta pruning on a given node
 # 
 # Parameters:
 #   gameState - a game state
 #   depth - the depth of the search
-#   alpha - the alpha value (not used yet, but I figured I'd at it now)
-#   beta - the beta value (also not used yet, but I figured I'd at it now)
+#   alpha - the best value the maximizer can guarantee (initially -inf)
+#   beta - the best value the minimizer can guarantee (initially +inf)
 #   me - the id of me, the current player
+#
+# Return: (bestValue, bestMove) tuple
+##
 def miniMax(gameState, depth, alpha, beta, me):
-    # Base case: check for terminal state or depth limit
     if gameState.phase == PLAY_PHASE:
         winner = getWinner(gameState)
-        if winner is not None or depth == 0:
+        if winner is not None or depth == 0: # This is my base case
             return rootEval(gameState, me), None
 
-    # Get all legal moves
     moves = listAllLegalMoves(gameState)
 
     if not moves:
@@ -94,11 +95,9 @@ def miniMax(gameState, depth, alpha, beta, me):
     if gameState.whoseTurn == me:
         bestValue = float('-inf')
         bestMove = None
-        
         for move in moves:
             newState = getNextStateAdversarial(gameState, move)
             value, _ = miniMax(newState, depth - 1, alpha, beta, me)
-            
             if value > bestValue:
                 bestValue = value
                 bestMove = move
@@ -109,16 +108,13 @@ def miniMax(gameState, depth, alpha, beta, me):
                 break  # Beta cutoff - prune remaining branches
                 
         return bestValue, bestMove
-    
     # If it's the enemy's turn, we want to minimize our score
     else:
         bestValue = float('inf')
         bestMove = None
-        
         for move in moves:
             newState = getNextStateAdversarial(gameState, move)
             value, _ = miniMax(newState, depth - 1, alpha, beta, me)
-            
             if value < bestValue:
                 bestValue = value
                 bestMove = move
@@ -132,24 +128,10 @@ def miniMax(gameState, depth, alpha, beta, me):
 
 
 ##
-# Updated getMove method for AIPlayer class
-##
-def getMove(self, currentState):
-    # Run miniMax with alpha-beta pruning
-    # Initialize alpha to -infinity and beta to +infinity
-    value, move = miniMax(currentState, 3, float('-inf'), float('inf'), self.playerId)
-    
-    # Ensure we have a valid move
-    if move is None:
-        move = Move(END, None, None)
-    
-    return move
-
-##
 # utility
 #
 # Description: Calculates the utility of a given game state on a scale of 0 to 1
-# Reminder: Do not use the board variable
+# HEAVILY WEIGHTED TOWARD FOOD COLLECTION
 #
 # Parameters:
 #   gameState - a game state
@@ -158,45 +140,42 @@ def getMove(self, currentState):
 #
 ##
 def utility(gameState):
-        # Some ideas: from Josh:
-        # Food difference - this should absolutely play a decently large role.
-        # enemy ants - if the enemy has lots of ants and we don't, that's bad.
+    # Constants
+    me = gameState.whoseTurn
+    enemy = 1 - me
+    myInv = getCurrPlayerInventory(gameState)
+    enemyInv = getEnemyInv(enemy, gameState)
+    myAnts = getAntList(gameState, me, (WORKER,DRONE,SOLDIER,R_SOLDIER,QUEEN))
+    utility = 0.0
+    
+    # If I win in this game state; instant win lose
+    if gameState.phase == PLAY_PHASE:
+        if getWinner(gameState) == me or \
+                len(getAntList(gameState, enemy, (QUEEN,))) == 0 or \
+                myInv.foodCount == 11 or \
+                enemyInv.getAnthill().captureHealth == 0:
+            return float(1.0)  # Changed from 100 to 1.0 for consistency
+        elif getWinner(gameState) == enemy or \
+            len(myAnts) == 0 or \
+                enemyInv.foodCount == 11 or \
+                myInv.getAnthill().captureHealth == 0:
+            return float(0.0)
 
-        # Constants
-        me = gameState.whoseTurn
-        enemy = 1 - me
-        myInv = getCurrPlayerInventory(gameState)
-        enemyInv = getEnemyInv(enemy, gameState)
-        myAnts = getAntList(gameState, me, (WORKER,DRONE,SOLDIER,R_SOLDIER,QUEEN))
-        utility = 0.0
-        # If I win in this game state; instant win lose
-        if gameState.phase == PLAY_PHASE:   #v libby trick
-            if getWinner(gameState) == me or \
-                    len(getAntList(gameState, enemy, (QUEEN,))) == 0 or \
-                    myInv.foodCount == 11 or \
-                    enemyInv.getAnthill().captureHealth == 0:
-                return float(100)  # cost 2 win?
-            elif getWinner(gameState) == enemy or \
-                len(myAnts) == 0 or \
-                    enemyInv.foodCount == 11 or \
-                    myInv.getAnthill().captureHealth == 0:
-                return float(0) # float('inf') # cost 2 lose? / best thing ever
+    # FOOD is now 95% of total utility (increased from 80%)
+    foodScore = foodUtility(gameState, myInv, enemyInv, me)
+    if foodScore:
+        utility += foodScore * 0.95
 
-        # FOOD is the primary objective - 80% of total utility
-        foodScore = foodUtility(gameState, myInv, enemyInv, me)
-        if foodScore:
-            utility += foodScore * 0.8
+    # Defense is now only 5% (decreased from 20%)
+    defenseScore = defenseUtility(gameState, me)
+    utility += defenseScore * 0.05
 
-        # defense stuff - 20% of total utility
-        defenseScore = defenseUtility(gameState, me)
-        utility += defenseScore * 0.2
-
-        return utility
+    return utility
 
 
-## foodUtility
+## foodUtility - ENHANCED FOR MORE AGGRESSIVE GATHERING + TUNNEL BLOCKING
 # Description: Calculates the utility of the food situation in a game state
-# Includes worker utility
+# Includes worker utility and tunnel blocking strategy
 #
 # Parameters:
 #   gameState - a game state
@@ -216,23 +195,45 @@ def foodUtility(gameState, myInv, enemyInv, me):
     foodList = getConstrList(gameState, None, (FOOD,))
     numWorkers = len(myWorkers)
     
-    # Food count is critical - 50% of food utility
+    # Get enemy tunnel
+    enemy = 1 - me
+    enemyTunnels = getConstrList(gameState, enemy, (TUNNEL,))
+    enemyTunnel = enemyTunnels[0].coords if enemyTunnels else None
+    
+    # Food count is CRITICAL - 60% of food utility (increased from 50%)
     if myInv.foodCount is not None and enemyInv.foodCount is not None:
-        foodScore = 0.5
-        foodScore += (myInv.foodCount / 11) * 0.5
-        foodScore -= (enemyInv.foodCount / 11) * 0.5
-        utility += foodScore * 0.5
+        foodScore = 0.0
+        # My food count is heavily rewarded
+        foodScore += (myInv.foodCount / 11) * 0.8  # Increased from 0.5
+        # Enemy food count is penalized
+        foodScore -= (enemyInv.foodCount / 11) * 0.2  # Decreased from 0.5
+        utility += foodScore * 0.6
 
-    # If we have no workers, this is very bad
+    # If we have no workers, this is catastrophic
     if numWorkers == 0:
-        return utility * 0.3  # Heavily penalize no workers
+        return utility * 0.1  # Severe penalty
 
-    # Penalty for too many workers
-    if numWorkers > 2:
-        utility -= 0.15
+    # Encourage having 2 workers: 1 blocker + 1 gatherer (PRIORITY: blocking first!)
+    if numWorkers == 1:
+        utility += 0.05  # Small bonus for first worker (blocker)
+    elif numWorkers == 2:
+        utility += 0.20  # BIG bonus for two workers (blocker + gatherer)
+    elif numWorkers > 2:
+        utility -= 0.25  # Penalty for too many workers
 
-    # Worker behavior scoring - 50% of food utility
+    # Worker behavior scoring - 40% of food utility
+    # DYNAMIC PRIORITY: Blocking until tunnel blocked, then FOOD becomes priority
     workerScore = 0.0
+    blockerScore = 0.0
+    gathererScore = 0.0
+    tunnelIsBlocked = False
+    
+    # Check if tunnel is already blocked
+    if enemyTunnel and numWorkers > 0:
+        for w in myWorkers:
+            if w.coords == enemyTunnel:
+                tunnelIsBlocked = True
+                break
     
     # Precompute drop sites
     dropSites = []
@@ -244,61 +245,104 @@ def foodUtility(gameState, myInv, enemyInv, me):
     # Filter food to only include food on our side (y <= 3)
     myFoodList = [f for f in foodList if f.coords[1] <= 3]
     
-    for w in myWorkers:
+    # Assign roles: first worker blocks (PRIORITY), second worker gathers
+    for idx, w in enumerate(myWorkers):
         contrib = 0.0
         
-        if w.carrying:
-            # Worker is carrying food - STRONGLY incentivize depositing
-            if dropSites:
-                if any(w.coords == d for d in dropSites):
-                    # At drop site - maximum reward!
-                    contrib = 1.0
-                else:
-                    # Moving toward drop site
-                    closestDrop = min(approxDist(w.coords, d) for d in dropSites)
-                    # Strong reward for being close (inverse distance)
-                    if closestDrop == 0:
-                        contrib = 1.0
-                    elif closestDrop <= 3:
-                        contrib = 0.8
-                    elif closestDrop <= 6:
-                        contrib = 0.6
-                    else:
-                        contrib = max(0.4, 1.0 - (closestDrop / 20.0))
+        # First worker (index 0) should block enemy tunnel - TOP PRIORITY!
+        if idx == 0 and enemyTunnel:
+            # Check if worker is blocking the tunnel
+            if w.coords == enemyTunnel:
+                # Perfect! Worker is blocking the tunnel
+                contrib = 1.0
             else:
-                contrib = 0.5
-        else:
-            # Worker not carrying - incentivize getting food
-            if myFoodList:
-                closestFood = min(approxDist(w.coords, f.coords) for f in myFoodList)
-                
-                # Check if worker is ON food
-                onFood = any(w.coords == f.coords for f in myFoodList)
-                if onFood:
-                    # On food but not carrying - this will pick up next turn
+                # Worker should move toward enemy tunnel
+                distToTunnel = approxDist(w.coords, enemyTunnel)
+                if distToTunnel == 1:
+                    contrib = 0.95
+                elif distToTunnel == 2:
                     contrib = 0.9
-                elif closestFood == 0:
+                elif distToTunnel <= 3:
                     contrib = 0.85
-                elif closestFood <= 2:
-                    contrib = 0.7
-                elif closestFood <= 4:
-                    contrib = 0.5
-                elif closestFood <= 6:
-                    contrib = 0.3
+                elif distToTunnel <= 5:
+                    contrib = 0.75
                 else:
-                    contrib = max(0.1, 0.5 - (closestFood / 20.0))
+                    contrib = max(0.6, 1.0 - (distToTunnel / 20.0))
+            blockerScore = contrib
+        
+        # Second worker (index 1) should gather food
+        else:
+            if w.carrying:
+                # Worker is carrying food - MAXIMUM PRIORITY for depositing
+                if dropSites:
+                    if any(w.coords == d for d in dropSites):
+                        # At drop site - MAXIMUM reward!
+                        contrib = 1.0
+                    else:
+                        # Moving toward drop site - heavy reward based on proximity
+                        closestDrop = min(approxDist(w.coords, d) for d in dropSites)
+                        if closestDrop == 0:
+                            contrib = 1.0
+                        elif closestDrop == 1:
+                            contrib = 0.95
+                        elif closestDrop == 2:
+                            contrib = 0.9
+                        elif closestDrop <= 4:
+                            contrib = 0.85
+                        elif closestDrop <= 6:
+                            contrib = 0.75
+                        else:
+                            contrib = max(0.5, 1.0 - (closestDrop / 15.0))
+                else:
+                    contrib = 0.6
             else:
-                # No food available
-                contrib = 0.0
+                # Worker not carrying - HIGH priority for getting food
+                if myFoodList:
+                    closestFood = min(approxDist(w.coords, f.coords) for f in myFoodList)
+                    
+                    # Check if worker is ON food
+                    onFood = any(w.coords == f.coords for f in myFoodList)
+                    if onFood:
+                        # On food - about to pick up
+                        contrib = 0.95
+                    elif closestFood == 1:
+                        contrib = 0.9
+                    elif closestFood == 2:
+                        contrib = 0.85
+                    elif closestFood <= 3:
+                        contrib = 0.75
+                    elif closestFood <= 5:
+                        contrib = 0.6
+                    elif closestFood <= 7:
+                        contrib = 0.45
+                    else:
+                        contrib = max(0.2, 0.7 - (closestFood / 15.0))
+                else:
+                    # No food available
+                    contrib = 0.0
+            
+            gathererScore = contrib
         
         workerScore += contrib
     
-    # Average the worker score
-    if numWorkers > 0:
-        workerScore = workerScore / numWorkers
+    # Weight blocking vs gathering based on whether tunnel is blocked
+    if numWorkers == 1:
+        # Only blocker exists - use blocker score
+        finalWorkerScore = blockerScore
+    elif numWorkers >= 2:
+        if tunnelIsBlocked:
+            # Tunnel is blocked! FOOD is now the priority
+            # 80% gatherer, 20% blocker (maintain position)
+            finalWorkerScore = (blockerScore * 0.2) + (gathererScore * 0.8)
+        else:
+            # Tunnel NOT blocked yet - blocking is priority
+            # 70% blocker, 30% gatherer
+            finalWorkerScore = (blockerScore * 0.7) + (gathererScore * 0.3)
+    else:
+        finalWorkerScore = 0.0
     
-    # Add worker behavior to utility (50% weight)
-    utility += workerScore * 0.5
+    # Add worker behavior to utility (40% weight)
+    utility += finalWorkerScore * 0.4
     
     # Clamp final utility to valid range
     utility = max(0.0, min(1.0, utility))
@@ -310,8 +354,6 @@ def foodUtility(gameState, myInv, enemyInv, me):
 #
 # Parameters:
 #   gameState - a game state
-#   myInv - the inventory of the current player
-#   enemyInv - the inventory of the enemy
 #   me - the id of the current player
 #
 # Return: The utility of the attack situation
@@ -386,7 +428,6 @@ def attackUtility(gameState, myInv, enemyInv, me):
     # If there are no enemy's, attack is perfect
     if not attackable:
         for t in attackers:
-            # minDist = approxDist(enemyAnthill, t.coords) # min(approxDist(d.coords, t.coords) for d in attackers)
             minDist = approxDist(enemyQueen, t.coords)
             score = 1.0 - min(minDist / maxDist, 10.0)
             total += score
@@ -400,8 +441,7 @@ def attackUtility(gameState, myInv, enemyInv, me):
     # Encourage attackers to be close to threats
     # 0 distance -> 1.0 score; distance >= maxDist -> 0.1 score
     for t in attackable:
-        minDist = approxDist(enemyAnthill, t.coords) # min(approxDist(d.coords, t.coords) for d in attackers)
-        # minDist = approxDist(enemyQueen, t.coords)
+        minDist = approxDist(enemyAnthill, t.coords)
         score = 1.0 - min(minDist / maxDist, 10.0)
         total += score
 
@@ -409,7 +449,7 @@ def attackUtility(gameState, myInv, enemyInv, me):
     return max(0.0, min(1.0, proximityScore))
 
 
- ##
+##
 # bestMove
 #
 # Description: Searches a given list of game nodes to find the highest utility move
@@ -525,10 +565,10 @@ class AIPlayer(Player):
     #
     #Return: The Move to be made
     ##
-
     def getMove(self, currentState):
-        # run miniMax
-        value, move = miniMax(currentState, 3, 0, 0, self.playerId) # idc about alpha and beta, haven't implemented yet
+        # Run miniMax with alpha-beta pruning
+        # Initialize alpha to -infinity and beta to +infinity
+        value, move = miniMax(currentState, 3, float('-inf'), float('inf'), self.playerId)
         
         # Ensure we have a valid move
         if move is None:
@@ -560,12 +600,11 @@ class AIPlayer(Player):
         pass
 
 
-# Remove print statements for final version
-# print("-------------------------------- STARTING TESTS -------------------------------- ")
+# Unit Tests
 totalTests = 4
 passedTests = 0
+
 # BEST MOVE TEST
-# print("| Beginning bestMove test")
 nodes = []
 for i in range(10):
     node = Node(None, None, GameState.getBlankState(), 1, None)
@@ -574,43 +613,30 @@ for i in range(10):
 bestNode = bestMove(nodes)
 
 if bestNode.evaluation == 1.0:
-    # print(f"| BestMove test passed. Value was {bestNode.evaluation}, expected 1.9")
     passedTests += 1
 else:
     print(f"| BestMove test failed. Value was {bestNode.evaluation}, expected 1.9")
 
-
 # UTILITY TEST
-# print("| Beginning utility test")
 gameState = GameState.getBlankState()
 util = utility(gameState)
 if not 0.0 <= util <= 1.0:
     print(f"| ERROR: utility() returned {util}, expected 0.4")
 else:
-    # print(f"| Utility test passed. Value was {util}, expected 0.4")
     passedTests += 1
 
-
 # FOOD UTILITY TEST
-# print("| Beginning food utility test")
 gameState = GameState.getBasicState()
 util = foodUtility(gameState, getCurrPlayerInventory(gameState), getEnemyInv(0, gameState), 0)
 if not 0.0 <= util <= 1.0:
     print(f"| ERROR: foodUtility() returned {util}, expected 0.0")
 else:
-    # print(f"| Food utility test passed. Value was {util}, expected 0.0")
     passedTests += 1
 
-
 # DEFENSE UTILITY TEST
-# print("| Beginning defense utility test")
 gameState = GameState.getBasicState()
 util = defenseUtility(gameState, 0)
 if not 0.0 <= util <= 1.0:
     print(f"| ERROR: defenseUtility() returned {util}, expected 1.0")
 else:
-    # print(f"| Defense utility test passed. Value was {util}, expected 1.0")
     passedTests += 1
-
-# print(f"|----------------------- Passed {passedTests} out of {totalTests} tests --------------------------- ")
-# print("-------------------------------- ENDING TESTS -------------------------------- ")
