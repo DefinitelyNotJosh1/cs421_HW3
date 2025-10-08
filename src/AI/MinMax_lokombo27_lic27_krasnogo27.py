@@ -353,7 +353,7 @@ class AIPlayer(Player):
     # Return: None
     ##
     def __init__(self, inputPlayerId):
-        super(AIPlayer, self).__init__(inputPlayerId, "MiniMax Bot")
+        super(AIPlayer, self).__init__(inputPlayerId, "LoKraLi MiniMax") # LOkombo, KRAsnogorov, LI
         self.playerId = inputPlayerId
 
 
