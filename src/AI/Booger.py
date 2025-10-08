@@ -57,7 +57,7 @@ class AIPlayer(Player):
                 move = None
                 while move == None:
                     #Choose any x location
-                    x = random.randint(0, 9)
+                    x = random.randint(6, 9)
                     #Choose any y location on enemy side of the board
                     y = random.randint(6, 9)
                     #Set the move if this space is empty
