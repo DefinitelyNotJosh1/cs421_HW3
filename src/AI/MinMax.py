@@ -55,6 +55,17 @@ def miniMax(gameState, depth, alpha, beta, me):
     if not moves:
         return rootEval(gameState, me), None
     
+    # Sort moves for better pruning
+    if gameState.whoseTurn == me:
+        # Sort descending (best first)
+        moves.sort(key=lambda move: rootEval(getNextStateAdversarial(gameState, move), me), reverse=True)
+    else:
+        # Sort ascending (worst first)
+        moves.sort(key=lambda move: rootEval(getNextStateAdversarial(gameState, move), me))
+    
+    # Limit to top 10 moves for better performance
+    moves = moves[:10]
+    
     # If it's my turn, we want to maximize our score
     if gameState.whoseTurn == me:
         bestValue = float('-inf')
@@ -271,7 +282,7 @@ def defenseUtility(gameState, me):
     # Enemy ants on my side are threats
     threats = [a for a in getAntList(gameState, enemy, (WORKER, DRONE, SOLDIER, R_SOLDIER)) if on_my_side(a.coords)]
     # My attack-capable ants
-    defenders = getAntList(gameState, me, (SOLDIER,))
+    defenders = getAntList(gameState, me, (DRONE,))
 
     # If no threats on my side, defense is perfect
     if not threats:
@@ -323,7 +334,7 @@ def attackUtility(gameState, myInv, enemyInv, me):
         return total / len(myAnts)
  
     # Only consider soldiers for attack utility
-    myAnts = getAntList(gameState, me, (SOLDIER,))
+    myAnts = getAntList(gameState, me, (DRONE,))
     if not myAnts:
         return 0.0
     
